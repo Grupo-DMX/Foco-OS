@@ -1,17 +1,8 @@
-{
-  "name": "focoos",
-  "version": "1.0.0",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.0.0",
-    "vite": "^5.0.0"
+let interval = null
+self.onmessage = (e) => {
+  if (e.data === 'start') {
+    interval = setInterval(() => self.postMessage('tick'), 1000)
+  } else if (e.data === 'stop') {
+    clearInterval(interval)
   }
 }
