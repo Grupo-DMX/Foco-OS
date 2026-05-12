@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import confetti from "canvas-confetti";
 
 const CATS = ["Estratégia","Vendas","Operações","Financeiro","Equipe","Marketing","Pessoal"];
 const CC = {"Estratégia":"#534AB7","Vendas":"#ff3b3b","Operações":"#888","Financeiro":"#185FA5","Equipe":"#39ff14","Marketing":"#f5c518","Pessoal":"#c8ff00"};
@@ -23,6 +24,54 @@ function loadData(){try{return JSON.parse(localStorage.getItem(SK)||"{}");}catch
 function saveData(p){try{localStorage.setItem(SK,JSON.stringify(p));}catch{}}
 function timeToMins(t){const [h,m]=t.split(":").map(Number);return h*60+m;}
 function minsToTime(m){return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
+
+// Sound & Notification helpers
+function playDing(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.type="sine";osc.frequency.setValueAtTime(880,ctx.currentTime);
+    gain.gain.setValueAtTime(0.3,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.8);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.8);
+  }catch(e){console.warn("Audio not supported");}
+}
+function sendNotification(title,body){
+  if(Notification.permission==="granted"){
+    new Notification(title,{body,icon:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>"});
+  }
+}
+function fireConfetti(){
+  confetti({particleCount:80,spread:70,origin:{y:0.6},colors:["#39ff14","#f5c518","#ff3b3b","#534AB7","#ffffff"]});
+}
+
+// Backup helpers
+function exportBackup(tasks, schedule){
+  const data = { tasks, schedule, exportedAt: new Date().toISOString(), version: "v7" };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `focoos-backup-${todayKey()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importBackup(file, setTasks, setSchedule){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if(data.tasks) setTasks(data.tasks);
+      if(data.schedule) setSchedule(data.schedule);
+      alert("Backup importado com sucesso!");
+    } catch {
+      alert("Erro ao importar backup. Arquivo inválido.");
+    }
+  };
+  reader.readAsText(file);
+}
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const T = {
@@ -117,6 +166,8 @@ export default function App(){
   const [tab,setTab]=useState("tasks");
   const [filter,setFilter]=useState("Todas");
   const [adding,setAdding]=useState(false);
+  const [menuOpen,setMenuOpen]=useState(false);
+  const fileInputRef=useRef(null);
   const [form,setForm]=useState({title:"",cat:"Estratégia",prio:"Alta",mins:25});
   const [activeId,setActiveId]=useState(null);
   const [preset,setPreset]=useState(PRESETS[0]);
@@ -131,6 +182,13 @@ export default function App(){
   const workerRef=useRef(null);
   const stateRef=useRef({});
   stateRef.current={phase,preset,activeId,tasks};
+
+  // Request notification permission on mount
+  useEffect(()=>{
+    if("Notification" in window && Notification.permission==="default"){
+      Notification.requestPermission();
+    }
+  },[]);
 
   useEffect(()=>{
     const blob=new Blob([`let iv=null;self.onmessage=e=>{if(e.data==='start'){iv=setInterval(()=>self.postMessage('tick'),1000);}else if(e.data==='stop'){clearInterval(iv);}}`],{type:"application/javascript"});
@@ -151,8 +209,14 @@ export default function App(){
               setHistory(h=>{const day={...(h[dk]||{})};day[tk.cat]=(day[tk.cat]||0)+pr.f;return{...h,[dk]:day};});
               setTasks(prev=>prev.map(t=>t.id===aid?{...t,spentMins:(t.spentMins||0)+pr.f}:t));
             }
+            playDing();
+            sendNotification("Sessão de foco concluída!","Hora de uma pausa. Bom trabalho!");
             setPhase("break");return pr.b*60;
-          }else{setPhase("focus");return pr.f*60;}
+          }else{
+            playDing();
+            sendNotification("Pausa finalizada!","Pronto para mais uma sessão de foco?");
+            setPhase("focus");return pr.f*60;
+          }
         }
         return s-1;
       });
@@ -168,7 +232,11 @@ export default function App(){
   function selPreset(p){if(running)return;setPreset(p);setPhase("focus");setSecs(p.f*60);}
   function focusTask(id){if(running)return;setActiveId(id);setPhase("focus");setSecs(preset.f*60);setTab("timer");}
   function addTask(){if(!form.title.trim())return;setTasks(ts=>[{id:Date.now(),title:form.title.trim(),cat:form.cat,prio:form.prio,mins:Number(form.mins),done:false,spentMins:0,created:Date.now()},...ts]);setForm(f=>({...f,title:""}));setAdding(false);}
-  function toggleTask(id){setTasks(ts=>ts.map(t=>t.id===id?{...t,done:!t.done}:t));}
+  function toggleTask(id){
+    const task=tasks.find(t=>t.id===id);
+    if(task&&!task.done) fireConfetti(); // fire only when marking as done
+    setTasks(ts=>ts.map(t=>t.id===id?{...t,done:!t.done}:t));
+  }
   function removeTask(id){if(activeId===id){setActiveId(null);workerRef.current.postMessage('stop');setRunning(false);}setTasks(ts=>ts.filter(t=>t.id!==id));setSchedule(sc=>{const next={...sc};FOCUS_BLOCKS.forEach(b=>{if(next[b.id])next[b.id]=next[b.id].filter(tid=>tid!==id);});return next;});}
   function saveEdit(){if(!editEntry)return;setHistory(h=>{const day={...(h[editEntry.date]||{})};day[editEntry.cat]=Math.max(0,Number(editEntry.mins));if(day[editEntry.cat]===0)delete day[editEntry.cat];return{...h,[editEntry.date]:day};});setEditEntry(null);}
   function deleteHistEntry(date,cat){setHistory(h=>{const day={...(h[date]||{})};delete day[cat];const next={...h};if(Object.keys(day).length===0)delete next[date];else next[date]=day;return next;});}
@@ -265,6 +333,26 @@ export default function App(){
               </div>
             )}
             <div style={T.datePill}>{dateStr}</div>
+
+            {/* Menu 3 dots */}
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setMenuOpen(v=>!v)} style={{...T.btnIcon(false),padding:"6px 8px",fontSize:18,lineHeight:1}}>&#8942;</button>
+              {menuOpen && (
+                <>
+                  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:998}}/>
+                  <div style={{position:"absolute",top:"100%",right:0,marginTop:6,background:bg3,border:`1px solid ${bdr}`,borderRadius:10,minWidth:180,zIndex:999,boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                    <button onClick={()=>{exportBackup(tasks,schedule);setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 16px",border:"none",background:"transparent",color:txt,fontSize:13,cursor:"pointer",textAlign:"left",borderRadius:"10px 10px 0 0",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=bg4} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <span style={{fontSize:16}}>&#x2B73;</span> Exportar Backup
+                    </button>
+                    <div style={{height:1,background:bdr,margin:"0 10px"}}/>
+                    <button onClick={()=>{fileInputRef.current?.click();setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 16px",border:"none",background:"transparent",color:txt,fontSize:13,cursor:"pointer",textAlign:"left",borderRadius:"0 0 10px 10px",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=bg4} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <span style={{fontSize:16}}>&#x2B71;</span> Importar Backup
+                    </button>
+                  </div>
+                </>
+              )}
+              <input ref={fileInputRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])importBackup(e.target.files[0],setTasks,setSchedule);e.target.value="";}}/>
+            </div>
           </div>
         </div>
 
