@@ -47,6 +47,32 @@ function fireConfetti(){
   confetti({particleCount:80,spread:70,origin:{y:0.6},colors:["#39ff14","#f5c518","#ff3b3b","#534AB7","#ffffff"]});
 }
 
+// Backup helpers
+function exportBackup(tasks, schedule){
+  const data = { tasks, schedule, exportedAt: new Date().toISOString(), version: "v7" };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `focoos-backup-${todayKey()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importBackup(file, setTasks, setSchedule){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if(data.tasks) setTasks(data.tasks);
+      if(data.schedule) setSchedule(data.schedule);
+      alert("Backup importado com sucesso!");
+    } catch {
+      alert("Erro ao importar backup. Arquivo inválido.");
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const T = {
   // layout
@@ -140,6 +166,8 @@ export default function App(){
   const [tab,setTab]=useState("tasks");
   const [filter,setFilter]=useState("Todas");
   const [adding,setAdding]=useState(false);
+  const [menuOpen,setMenuOpen]=useState(false);
+  const fileInputRef=useRef(null);
   const [form,setForm]=useState({title:"",cat:"Estratégia",prio:"Alta",mins:25});
   const [activeId,setActiveId]=useState(null);
   const [preset,setPreset]=useState(PRESETS[0]);
@@ -305,6 +333,26 @@ export default function App(){
               </div>
             )}
             <div style={T.datePill}>{dateStr}</div>
+
+            {/* Menu 3 dots */}
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setMenuOpen(v=>!v)} style={{...T.btnIcon(false),padding:"6px 8px",fontSize:18,lineHeight:1}}>&#8942;</button>
+              {menuOpen && (
+                <>
+                  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:998}}/>
+                  <div style={{position:"absolute",top:"100%",right:0,marginTop:6,background:bg3,border:`1px solid ${bdr}`,borderRadius:10,minWidth:180,zIndex:999,boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                    <button onClick={()=>{exportBackup(tasks,schedule);setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 16px",border:"none",background:"transparent",color:txt,fontSize:13,cursor:"pointer",textAlign:"left",borderRadius:"10px 10px 0 0",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=bg4} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <span style={{fontSize:16}}>&#x2B73;</span> Exportar Backup
+                    </button>
+                    <div style={{height:1,background:bdr,margin:"0 10px"}}/>
+                    <button onClick={()=>{fileInputRef.current?.click();setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 16px",border:"none",background:"transparent",color:txt,fontSize:13,cursor:"pointer",textAlign:"left",borderRadius:"0 0 10px 10px",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=bg4} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <span style={{fontSize:16}}>&#x2B71;</span> Importar Backup
+                    </button>
+                  </div>
+                </>
+              )}
+              <input ref={fileInputRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])importBackup(e.target.files[0],setTasks,setSchedule);e.target.value="";}}/>
+            </div>
           </div>
         </div>
 
