@@ -14,8 +14,16 @@
       ::-webkit-scrollbar-thumb:hover { background: #39ff1444; }
       select option { background: #1e1e1e; color: #f0f0f0; }
       @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: .3; }
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: .85; transform: scale(1.02); }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: scale(1.05); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes breathe {
+        0%, 100% { filter: brightness(1); }
+        50% { filter: brightness(1.1); }
       }
     </style>
   </head>

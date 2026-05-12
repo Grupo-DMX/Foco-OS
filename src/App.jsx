@@ -140,6 +140,80 @@ const T = {
   timerPanel:{ background:bg2, border:`1px solid ${bdr}`, borderRadius:16, padding:28, display:"flex", flexDirection:"column", alignItems:"center" },
   timerRing:{ position:"relative", width:180, height:180, marginBottom:24, marginTop:8 },
   timerTime:{ fontSize:40, fontWeight:800, letterSpacing:3, fontVariantNumeric:"tabular-nums" },
+  // Immersive mode styles
+  immersiveOverlay:(phase,running)=>({
+    position:"fixed", inset:0, zIndex:9999,
+    background: phase==="focus" 
+      ? "linear-gradient(135deg, #ff8c00 0%, #ff6b00 25%, #f5a623 50%, #ffb347 75%, #ff8c00 100%)"
+      : "linear-gradient(135deg, #1a1a2e 0%, #16213e 25%, #0f3460 50%, #1a1a6e 75%, #0d1b3e 100%)",
+    display: running ? "flex" : "none",
+    flexDirection:"column", alignItems:"center", justifyContent:"center",
+    animation: "fadeIn .5s ease-out",
+  }),
+  immersiveTitle:(phase)=>({
+    fontSize: 72, fontWeight: 900, letterSpacing: 8,
+    color: phase==="focus" ? "#fff" : "#64b5f6",
+    textShadow: phase==="focus" 
+      ? "0 4px 20px rgba(0,0,0,.3), 0 0 80px rgba(255,180,100,.5)"
+      : "0 4px 20px rgba(0,0,0,.5), 0 0 80px rgba(100,181,246,.4)",
+    textTransform: "uppercase", marginBottom: 40,
+    animation: "pulse 3s ease-in-out infinite",
+  }),
+  immersiveRing:{
+    position:"relative", width:280, height:280, marginBottom:40,
+  },
+  immersiveTime:(phase)=>({
+    fontSize:64, fontWeight:900, letterSpacing:6, fontVariantNumeric:"tabular-nums",
+    color: phase==="focus" ? "#fff" : "#90caf9",
+    textShadow: phase==="focus" 
+      ? "0 2px 10px rgba(0,0,0,.3)"
+      : "0 2px 10px rgba(0,0,0,.5)",
+  }),
+  immersivePhase:(phase)=>({
+    fontSize:14, fontWeight:700, letterSpacing:4, textTransform:"uppercase",
+    color: phase==="focus" ? "rgba(255,255,255,.7)" : "rgba(144,202,249,.7)",
+    marginTop:4,
+  }),
+  immersiveTask:(phase)=>({
+    fontSize:18, fontWeight:600, maxWidth:400, textAlign:"center",
+    color: phase==="focus" ? "rgba(255,255,255,.85)" : "rgba(144,202,249,.85)",
+    marginBottom:50, padding:"12px 30px",
+    background: phase==="focus" ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.08)",
+    borderRadius:30, backdropFilter:"blur(10px)",
+  }),
+  immersiveBtn:(phase)=>({
+    padding:"16px 40px", fontSize:16, fontWeight:700, letterSpacing:2,
+    border:"none", borderRadius:50, cursor:"pointer",
+    color: phase==="focus" ? "#ff6b00" : "#0f3460",
+    background: phase==="focus" ? "#fff" : "#90caf9",
+    boxShadow: phase==="focus" 
+      ? "0 8px 30px rgba(0,0,0,.25), 0 0 40px rgba(255,255,255,.2)"
+      : "0 8px 30px rgba(0,0,0,.35), 0 0 40px rgba(144,202,249,.2)",
+    transition:"transform .15s, box-shadow .15s",
+  }),
+  immersiveExit:(phase)=>({
+    position:"absolute", top:30, right:30,
+    padding:"10px 20px", fontSize:13, fontWeight:600,
+    border:`2px solid ${phase==="focus"?"rgba(255,255,255,.3)":"rgba(144,202,249,.3)"}`,
+    borderRadius:30, cursor:"pointer", background:"transparent",
+    color: phase==="focus" ? "rgba(255,255,255,.7)" : "rgba(144,202,249,.7)",
+    transition:"all .15s",
+  }),
+  immersiveSessions:(phase)=>({
+    position:"absolute", bottom:40, left:"50%", transform:"translateX(-50%)",
+    display:"flex", gap:8, padding:"10px 20px",
+    background: phase==="focus" ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.05)",
+    borderRadius:30,
+  }),
+  immersiveSessionDot:(filled,phase)=>({
+    width:12, height:12, borderRadius:"50%",
+    background: filled 
+      ? (phase==="focus" ? "#fff" : "#90caf9") 
+      : (phase==="focus" ? "rgba(255,255,255,.25)" : "rgba(144,202,249,.25)"),
+    boxShadow: filled 
+      ? (phase==="focus" ? "0 0 10px rgba(255,255,255,.5)" : "0 0 10px rgba(144,202,249,.4)")
+      : "none",
+  }),
   timerPhase:(c)=>({ fontSize:11, fontWeight:700, letterSpacing:2.5, color:c, marginTop:4 }),
   btnRound:{ width:46, height:46, borderRadius:"50%", border:`1px solid ${bdr}`, background:bg4, cursor:"pointer", fontSize:16, color:muted, display:"flex", alignItems:"center", justifyContent:"center" },
   btnPlay:(r)=>({ width:66, height:66, borderRadius:"50%", border:"none", background:r?red:neon, cursor:"pointer", fontSize:22, color:"#000", fontWeight:700, boxShadow:`0 0 24px ${r?red:neon}55`, display:"flex", alignItems:"center", justifyContent:"center" }),
@@ -776,6 +850,81 @@ export default function App(){
             TAB: TIMER
         ══════════════════════════════════════════════════════════════════ */}
         {tab==="timer"&&(
+          <>
+          {/* IMMERSIVE MODE OVERLAY */}
+          {running && (
+            <div style={T.immersiveOverlay(phase,running)}>
+              {/* Exit button */}
+              <button 
+                onClick={startStop} 
+                style={T.immersiveExit(phase)}
+                onMouseEnter={e=>{e.currentTarget.style.background=phase==="focus"?"rgba(255,255,255,.15)":"rgba(144,202,249,.15)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
+              >
+                ✕ Sair
+              </button>
+
+              {/* Main title */}
+              <div style={T.immersiveTitle(phase)}>
+                {phase==="focus" ? "Em Foco" : "Intervalo"}
+              </div>
+
+              {/* Active task */}
+              {activeTask && (
+                <div style={T.immersiveTask(phase)}>
+                  {activeTask.title}
+                </div>
+              )}
+
+              {/* Large Timer Ring */}
+              <div style={T.immersiveRing}>
+                <svg width={280} height={280} style={{transform:"rotate(-90deg)"}}>
+                  <defs>
+                    <filter id="immersiveGlow">
+                      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                      <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                  </defs>
+                  {/* Track */}
+                  <circle cx={140} cy={140} r={120} fill="none" 
+                    stroke={phase==="focus"?"rgba(0,0,0,.15)":"rgba(255,255,255,.1)"} 
+                    strokeWidth={12}/>
+                  {/* Progress ring */}
+                  <circle cx={140} cy={140} r={120} fill="none" 
+                    stroke={phase==="focus"?"#fff":"#90caf9"}
+                    strokeWidth={12} strokeLinecap="round"
+                    strokeDasharray={2*Math.PI*120} 
+                    strokeDashoffset={2*Math.PI*120*(1-pct)}
+                    style={{transition:"stroke-dashoffset .8s linear", filter:"url(#immersiveGlow)"}}/>
+                </svg>
+                <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                  <div style={T.immersiveTime(phase)}>{fmt(secs)}</div>
+                  <div style={T.immersivePhase(phase)}>{phase==="focus"?"FOCO":"PAUSA"}</div>
+                </div>
+              </div>
+
+              {/* Pause/Resume button */}
+              <button 
+                onClick={startStop} 
+                style={T.immersiveBtn(phase)}
+                onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.05)";}}
+                onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}
+              >
+                ⏸ PAUSAR
+              </button>
+
+              {/* Session dots */}
+              <div style={T.immersiveSessions(phase)}>
+                {Array.from({length:Math.max(sessions+1,4)}).map((_,i)=>(
+                  <div key={i} style={T.immersiveSessionDot(i<sessions,phase)}/>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={T.timerWrap}>
 
             {/* Left — Timer */}
@@ -898,14 +1047,15 @@ export default function App(){
                   </div>
                 </>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════════
-            TAB: DASHBOARD
-        ══════════════════════════════════════════════════════════════════ */}
-        {tab==="dash"&&(
+</div>
+  </div>
+  </>
+  )}
+  
+  {/* ══════════════════════════════════════════════════════════════════
+  TAB: DASHBOARD
+  ══════════════════════════════════════════════════════════════════ */}
+  {tab==="dash"&&(
           <div>
             {/* KPI row */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:18}}>
