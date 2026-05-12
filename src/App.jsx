@@ -5,20 +5,30 @@ const CC = {"Estratégia":"#534AB7","Vendas":"#ff3b3b","Operações":"#888","Fin
 const PC = {"Alta":"#ff3b3b","Média":"#f5c518","Baixa":"#39ff14"};
 const PO = {"Alta":0,"Média":1,"Baixa":2};
 const PRESETS = [{l:"25/5",f:25,b:5},{l:"50/10",f:50,b:10},{l:"90/15",f:90,b:15}];
-const SK = "focoos_v6";
+const SK = "focoos_v7";
 const neon="#39ff14",yel="#f5c518",red="#ff3b3b",bg="#0a0a0a",bg2="#111",bg3="#171717",bg4="#1e1e1e",bdr="#2a2a2a",muted="#666",txt="#f0f0f0";
+
+// Focus Blocks config
+const FOCUS_BLOCKS = [
+  { id:"estrategico-am", label:"Estratégico AM",  start:"06:00", end:"09:00", color:"#534AB7", icon:"🎯" },
+  { id:"power-am",       label:"Power Hour AM",   start:"09:00", end:"12:00", color:"#f5c518", icon:"⚡" },
+  { id:"operacional-pm", label:"Operacional PM",  start:"13:00", end:"16:00", color:"#888",    icon:"⚙️" },
+  { id:"deep-work-pm",   label:"Deep Work PM",    start:"16:00", end:"19:00", color:"#39ff14", icon:"🧠" },
+];
 
 function todayKey(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 function fmt(s){return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
 function mL(m){if(!m)return"0m";return m>=60?Math.floor(m/60)+"h"+(m%60?" "+m%60+"m":""):m+"m";}
 function loadData(){try{return JSON.parse(localStorage.getItem(SK)||"{}");}catch{return{};}}
 function saveData(p){try{localStorage.setItem(SK,JSON.stringify(p));}catch{}}
+function timeToMins(t){const [h,m]=t.split(":").map(Number);return h*60+m;}
+function minsToTime(m){return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const T = {
   // layout
   wrap:  { background:bg, minHeight:"100vh", color:txt, fontFamily:"'Segoe UI',system-ui,sans-serif", paddingBottom:80 },
-  inner: { maxWidth:960, margin:"0 auto", padding:"0 18px" },
+  inner: { maxWidth:1100, margin:"0 auto", padding:"0 18px" },
 
   // header
   header: { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"18px 0 20px", borderBottom:`1px solid ${bdr}`, marginBottom:24 },
@@ -103,6 +113,7 @@ export default function App(){
   const [history,setHistory]=useState(d.history||{});
   const [sessions,setSessions]=useState(d.sessions||0);
   const [totalFocus,setTotalFocus]=useState(d.totalFocusMins||0);
+  const [schedule,setSchedule]=useState(d.schedule||{}); // { blockId: [taskId, ...], customSlots: [{start,end,taskId}] }
   const [tab,setTab]=useState("tasks");
   const [filter,setFilter]=useState("Todas");
   const [adding,setAdding]=useState(false);
@@ -115,6 +126,8 @@ export default function App(){
   const [editEntry,setEditEntry]=useState(null);
   const [histFilter,setHistFilter]=useState("all");
   const [titleFocus,setTitleFocus]=useState(false);
+  const [dragTask,setDragTask]=useState(null);
+  const [plannerView,setPlannerView]=useState("split"); // "split" | "list" | "agenda"
   const workerRef=useRef(null);
   const stateRef=useRef({});
   stateRef.current={phase,preset,activeId,tasks};
@@ -147,7 +160,7 @@ export default function App(){
     return()=>{workerRef.current.terminate();URL.revokeObjectURL(url);};
   },[]);
 
-  useEffect(()=>{ saveData({tasks,history,sessions,totalFocusMins:totalFocus}); },[tasks,history,sessions,totalFocus]);
+  useEffect(()=>{ saveData({tasks,history,sessions,totalFocusMins:totalFocus,schedule}); },[tasks,history,sessions,totalFocus,schedule]);
 
   function startStop(){const next=!running;setRunning(next);workerRef.current.postMessage(next?'start':'stop');}
   function resetTimer(){workerRef.current.postMessage('stop');setRunning(false);setPhase("focus");setSecs(preset.f*60);}
@@ -156,9 +169,37 @@ export default function App(){
   function focusTask(id){if(running)return;setActiveId(id);setPhase("focus");setSecs(preset.f*60);setTab("timer");}
   function addTask(){if(!form.title.trim())return;setTasks(ts=>[{id:Date.now(),title:form.title.trim(),cat:form.cat,prio:form.prio,mins:Number(form.mins),done:false,spentMins:0,created:Date.now()},...ts]);setForm(f=>({...f,title:""}));setAdding(false);}
   function toggleTask(id){setTasks(ts=>ts.map(t=>t.id===id?{...t,done:!t.done}:t));}
-  function removeTask(id){if(activeId===id){setActiveId(null);workerRef.current.postMessage('stop');setRunning(false);}setTasks(ts=>ts.filter(t=>t.id!==id));}
+  function removeTask(id){if(activeId===id){setActiveId(null);workerRef.current.postMessage('stop');setRunning(false);}setTasks(ts=>ts.filter(t=>t.id!==id));setSchedule(sc=>{const next={...sc};FOCUS_BLOCKS.forEach(b=>{if(next[b.id])next[b.id]=next[b.id].filter(tid=>tid!==id);});return next;});}
   function saveEdit(){if(!editEntry)return;setHistory(h=>{const day={...(h[editEntry.date]||{})};day[editEntry.cat]=Math.max(0,Number(editEntry.mins));if(day[editEntry.cat]===0)delete day[editEntry.cat];return{...h,[editEntry.date]:day};});setEditEntry(null);}
   function deleteHistEntry(date,cat){setHistory(h=>{const day={...(h[date]||{})};delete day[cat];const next={...h};if(Object.keys(day).length===0)delete next[date];else next[date]=day;return next;});}
+
+  // Schedule functions
+  function assignTaskToBlock(taskId, blockId){
+    setSchedule(sc=>{
+      const next={...sc};
+      // Remove from other blocks first
+      FOCUS_BLOCKS.forEach(b=>{
+        if(next[b.id]) next[b.id]=next[b.id].filter(tid=>tid!==taskId);
+      });
+      // Add to target block
+      if(!next[blockId]) next[blockId]=[];
+      if(!next[blockId].includes(taskId)) next[blockId]=[...next[blockId],taskId];
+      return next;
+    });
+  }
+  function removeTaskFromBlock(taskId, blockId){
+    setSchedule(sc=>{
+      const next={...sc};
+      if(next[blockId]) next[blockId]=next[blockId].filter(tid=>tid!==taskId);
+      return next;
+    });
+  }
+  function getTaskBlock(taskId){
+    for(const b of FOCUS_BLOCKS){
+      if(schedule[b.id]?.includes(taskId)) return b.id;
+    }
+    return null;
+  }
 
   const pending=tasks.filter(t=>!t.done);
   const done=tasks.filter(t=>t.done);
@@ -175,6 +216,10 @@ export default function App(){
   const highPrio=pending.filter(t=>t.prio==="Alta");
   const topPending=[...pending].sort((a,b)=>PO[a.prio]-PO[b.prio]).slice(0,3);
   const topCat=CATS.reduce((b,c)=>(catMinsToday[c]||0)>(catMinsToday[b]||0)?c:b,CATS[0]);
+
+  // Unscheduled tasks (not assigned to any block)
+  const scheduledIds = FOCUS_BLOCKS.flatMap(b=>schedule[b.id]||[]);
+  const unscheduledPending = pending.filter(t=>!scheduledIds.includes(t.id));
 
   const now=new Date();
   const yr=now.getFullYear(),mo=String(now.getMonth()+1).padStart(2,"0");
@@ -197,6 +242,10 @@ export default function App(){
   const pendingVisible=visible.filter(t=>!t.done).sort((a,b)=>PO[a.prio]-PO[b.prio]);
   const doneVisible=visible.filter(t=>t.done);
 
+  // Current time indicator
+  const currentMins = now.getHours()*60+now.getMinutes();
+  const currentBlock = FOCUS_BLOCKS.find(b=>currentMins>=timeToMins(b.start)&&currentMins<timeToMins(b.end));
+
   return(
     <div style={T.wrap}>
       <div style={T.inner}>
@@ -206,7 +255,7 @@ export default function App(){
           <div style={T.logo}>
             <div style={T.logoDot}/>
             <div style={T.logoTxt}>FOCO<span style={{color:neon}}>OS</span></div>
-            <div style={{marginLeft:6,fontSize:10,color:muted,border:`1px solid ${bdr}`,borderRadius:5,padding:"2px 6px",letterSpacing:.5}}>v6</div>
+            <div style={{marginLeft:6,fontSize:10,color:muted,border:`1px solid ${bdr}`,borderRadius:5,padding:"2px 6px",letterSpacing:.5}}>v7</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             {running&&(
@@ -245,13 +294,23 @@ export default function App(){
           ))}
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════════
-            TAB: TAREFAS
-        ══════════════════════════════════════════════════════════════════ */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            TAB: TAREFAS (Daily Planner)
+        ═══════════════════════════════════════════════════════════════════ */}
         {tab==="tasks"&&(
           <div>
-            {/* Add form */}
-            {adding?(
+            {/* View toggle + Add button */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div style={{display:"flex",gap:4}}>
+                {[["split","Planner"],["list","Lista"],["agenda","Agenda"]].map(([v,l])=>(
+                  <button key={v} style={T.chip(plannerView===v)} onClick={()=>setPlannerView(v)}>{l}</button>
+                ))}
+              </div>
+              <button style={T.btnPrimary} onClick={()=>setAdding(true)}>+ Nova Tarefa</button>
+            </div>
+
+            {/* Add form modal */}
+            {adding&&(
               <div style={{...T.card, border:`1px solid ${neon}33`, background:bg3, marginBottom:16}}>
                 <div style={{fontSize:13,fontWeight:600,color:neon,marginBottom:12,letterSpacing:.5}}>NOVA TAREFA</div>
                 <input
@@ -280,56 +339,346 @@ export default function App(){
                   <button style={T.btnGhost} onClick={()=>setAdding(false)}>Cancelar</button>
                 </div>
               </div>
-            ):(
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                <div style={{fontSize:13,color:muted}}>
-                  <span style={{color:txt,fontWeight:600}}>{pending.length}</span> pendentes ·{" "}
-                  <span style={{color:muted}}>{done.length} concluídas</span>
+            )}
+
+            {/* ─── PLANNER VIEW (Split) ─────────────────────────────────────── */}
+            {plannerView==="split"&&(
+              <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:16,alignItems:"start"}}>
+                
+                {/* LEFT: Task backlog */}
+                <div>
+                  <div style={{...T.secLbl, marginBottom:10}}>
+                    <span>Backlog</span>
+                    <span style={{marginLeft:6,fontSize:10,color:neon,fontWeight:700}}>{unscheduledPending.length}</span>
+                    <div style={T.secLine}/>
+                  </div>
+                  
+                  {/* Category filter */}
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
+                    {["Todas",...CATS].map(c=>(
+                      <button key={c} style={{...T.chip(filter===c),padding:"3px 10px",fontSize:11}} onClick={()=>setFilter(c)}>{c}</button>
+                    ))}
+                  </div>
+                  
+                  <div style={{background:bg2,border:`1px solid ${bdr}`,borderRadius:14,padding:12,minHeight:300,maxHeight:"calc(100vh - 420px)",overflowY:"auto"}}>
+                    {unscheduledPending.filter(t=>filter==="Todas"||t.cat===filter).length===0?(
+                      <div style={{color:muted,fontSize:12,textAlign:"center",padding:"30px 0"}}>
+                        {pending.length===0?"Nenhuma tarefa pendente":"Todas as tarefas estão agendadas"}
+                      </div>
+                    ):(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {unscheduledPending.filter(t=>filter==="Todas"||t.cat===filter).sort((a,b)=>PO[a.prio]-PO[b.prio]).map(t=>(
+                          <div
+                            key={t.id}
+                            draggable
+                            onDragStart={()=>setDragTask(t.id)}
+                            onDragEnd={()=>setDragTask(null)}
+                            style={{
+                              background:bg3,
+                              border:`1px solid ${dragTask===t.id?neon:bdr}`,
+                              borderRadius:10,
+                              padding:"10px 12px",
+                              cursor:"grab",
+                              transition:"all .15s",
+                              opacity:dragTask===t.id?.6:1,
+                            }}
+                          >
+                            <div style={{fontSize:13,fontWeight:500,color:txt,marginBottom:6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div>
+                            <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+                              <span style={T.badge(CC[t.cat])}>{t.cat}</span>
+                              <span style={T.badge(PC[t.prio])}>{t.prio}</span>
+                              <span style={{fontSize:10,color:muted}}>{t.mins}m</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Done tasks collapsed */}
+                  {done.length>0&&(
+                    <div style={{marginTop:12}}>
+                      <div style={{...T.secLbl,marginBottom:8}}>
+                        <span>Concluídas</span>
+                        <span style={{marginLeft:6,fontSize:10,color:yel,fontWeight:700}}>{done.length}</span>
+                        <div style={T.secLine}/>
+                      </div>
+                      <div style={{background:bg2,border:`1px solid ${bdr}`,borderRadius:14,padding:12,maxHeight:140,overflowY:"auto",opacity:.7}}>
+                        {done.slice(0,5).map(t=>(
+                          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${bdr}`}}>
+                            <div style={{...T.check(true),width:16,height:16}}>
+                              <span style={{color:"#000",fontSize:9,fontWeight:900}}>✓</span>
+                            </div>
+                            <span style={{fontSize:12,color:muted,textDecoration:"line-through",flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</span>
+                          </div>
+                        ))}
+                        {done.length>5&&<div style={{fontSize:11,color:muted,textAlign:"center",marginTop:6}}>+{done.length-5} mais</div>}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <button style={T.btnPrimary} onClick={()=>setAdding(true)}>+ Nova Tarefa</button>
+
+                {/* RIGHT: Day schedule */}
+                <div>
+                  <div style={{...T.secLbl, marginBottom:10}}>
+                    <span>Agenda do Dia</span>
+                    <div style={T.secLine}/>
+                  </div>
+                  
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {FOCUS_BLOCKS.map(block=>{
+                      const blockTasks = (schedule[block.id]||[]).map(tid=>tasks.find(t=>t.id===tid)).filter(Boolean);
+                      const totalMins = blockTasks.reduce((a,t)=>a+(t.mins||0),0);
+                      const isCurrentBlock = currentBlock?.id===block.id;
+                      const blockDuration = timeToMins(block.end)-timeToMins(block.start);
+                      
+                      return(
+                        <div
+                          key={block.id}
+                          onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=neon;}}
+                          onDragLeave={e=>{e.currentTarget.style.borderColor=isCurrentBlock?block.color:bdr;}}
+                          onDrop={e=>{
+                            e.preventDefault();
+                            e.currentTarget.style.borderColor=isCurrentBlock?block.color:bdr;
+                            if(dragTask) assignTaskToBlock(dragTask,block.id);
+                          }}
+                          style={{
+                            background:bg2,
+                            border:`2px solid ${isCurrentBlock?block.color:bdr}`,
+                            borderRadius:14,
+                            overflow:"hidden",
+                            transition:"border-color .15s",
+                          }}
+                        >
+                          {/* Block header */}
+                          <div style={{
+                            background:block.color+"15",
+                            borderBottom:`1px solid ${block.color}33`,
+                            padding:"12px 16px",
+                            display:"flex",
+                            alignItems:"center",
+                            justifyContent:"space-between",
+                          }}>
+                            <div style={{display:"flex",alignItems:"center",gap:10}}>
+                              <span style={{fontSize:18}}>{block.icon}</span>
+                              <div>
+                                <div style={{fontSize:14,fontWeight:700,color:block.color}}>{block.label}</div>
+                                <div style={{fontSize:11,color:muted}}>{block.start} — {block.end}</div>
+                              </div>
+                              {isCurrentBlock&&(
+                                <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:block.color+"30",color:block.color,fontWeight:600,marginLeft:8}}>AGORA</span>
+                              )}
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:18,fontWeight:800,color:totalMins>blockDuration?red:txt}}>{totalMins}m</div>
+                              <div style={{fontSize:10,color:muted}}>de {blockDuration}m</div>
+                            </div>
+                          </div>
+                          
+                          {/* Block tasks */}
+                          <div style={{padding:12,minHeight:60}}>
+                            {blockTasks.length===0?(
+                              <div style={{
+                                border:`2px dashed ${bdr}`,
+                                borderRadius:10,
+                                padding:"20px 16px",
+                                textAlign:"center",
+                                color:muted,
+                                fontSize:12,
+                              }}>
+                                Arraste tarefas aqui
+                              </div>
+                            ):(
+                              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                                {blockTasks.map((t,i)=>(
+                                  <div key={t.id} style={{
+                                    display:"flex",
+                                    alignItems:"center",
+                                    gap:10,
+                                    background:bg3,
+                                    border:`1px solid ${t.id===activeId?neon:bdr}`,
+                                    borderRadius:10,
+                                    padding:"10px 12px",
+                                  }}>
+                                    <div style={T.check(t.done)} onClick={()=>toggleTask(t.id)}>
+                                      {t.done&&<span style={{color:"#000",fontSize:10,fontWeight:900}}>✓</span>}
+                                    </div>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{
+                                        fontSize:13,fontWeight:500,
+                                        color:t.done?muted:t.id===activeId?neon:txt,
+                                        textDecoration:t.done?"line-through":"none",
+                                        whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"
+                                      }}>{t.title}</div>
+                                      <div style={{display:"flex",gap:4,marginTop:4}}>
+                                        <span style={T.badge(CC[t.cat])}>{t.cat}</span>
+                                        <span style={{fontSize:10,color:muted}}>{t.mins}m</span>
+                                        {(t.spentMins||0)>0&&<span style={{fontSize:10,color:neon,fontWeight:600}}>{t.spentMins}m gasto</span>}
+                                      </div>
+                                    </div>
+                                    <div style={{display:"flex",gap:4}}>
+                                      {!t.done&&<button style={T.btnIcon(t.id===activeId)} onClick={()=>focusTask(t.id)} title="Focar">▶</button>}
+                                      <button style={{padding:"4px 7px",border:"none",background:"transparent",color:muted,cursor:"pointer",fontSize:14}} onClick={()=>removeTaskFromBlock(t.id,block.id)} title="Remover do bloco">×</button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Progress bar */}
+                          {blockTasks.length>0&&(
+                            <div style={{padding:"0 12px 12px"}}>
+                              <div style={{...T.progTrack,height:4}}>
+                                <div style={T.progFill(block.color,Math.min(100,Math.round((totalMins/blockDuration)*100))+"%")}/>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* Category filter */}
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
-              {["Todas",...CATS].map(c=><button key={c} style={T.chip(filter===c)} onClick={()=>setFilter(c)}>{c}</button>)}
-            </div>
-
-            {/* Task list */}
-            {visible.length===0?(
-              <div style={{...T.card, textAlign:"center", color:muted, padding:"40px 0", fontSize:13}}>
-                Nenhuma tarefa encontrada.
-              </div>
-            ):(
+            {/* ─── LIST VIEW ─────────────────────────────────────────────────── */}
+            {plannerView==="list"&&(
               <div>
-                {/* Pending tasks */}
-                {pendingVisible.length>0&&(
-                  <div style={{marginBottom:8}}>
-                    <div style={{...T.secLbl, marginBottom:10}}>
-                      <span>Pendentes</span>
-                      <div style={T.secLine}/>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {pendingVisible.map(t=>(
-                        <TaskCard key={t.id} t={t} activeId={activeId} onToggle={toggleTask} onFocus={focusTask} onRemove={removeTask} T={T} PC={PC} CC={CC} bdr={bdr} txt={txt} muted={muted} neon={neon} bg4={bg4}/>
-                      ))}
-                    </div>
+                {/* Category filter */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+                  {["Todas",...CATS].map(c=><button key={c} style={T.chip(filter===c)} onClick={()=>setFilter(c)}>{c}</button>)}
+                </div>
+
+                {/* Task list */}
+                {visible.length===0?(
+                  <div style={{...T.card, textAlign:"center", color:muted, padding:"40px 0", fontSize:13}}>
+                    Nenhuma tarefa encontrada.
+                  </div>
+                ):(
+                  <div>
+                    {/* Pending tasks */}
+                    {pendingVisible.length>0&&(
+                      <div style={{marginBottom:8}}>
+                        <div style={{...T.secLbl, marginBottom:10}}>
+                          <span>Pendentes</span>
+                          <div style={T.secLine}/>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {pendingVisible.map(t=>(
+                            <TaskCard key={t.id} t={t} activeId={activeId} onToggle={toggleTask} onFocus={focusTask} onRemove={removeTask} T={T} PC={PC} CC={CC} bdr={bdr} txt={txt} muted={muted} neon={neon} bg4={bg4} schedule={schedule} FOCUS_BLOCKS={FOCUS_BLOCKS}/>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Done tasks */}
+                    {doneVisible.length>0&&(
+                      <div style={{marginTop:16}}>
+                        <div style={{...T.secLbl, marginBottom:10}}>
+                          <span>Concluídas</span>
+                          <div style={T.secLine}/>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {doneVisible.map(t=>(
+                            <TaskCard key={t.id} t={t} activeId={activeId} onToggle={toggleTask} onFocus={focusTask} onRemove={removeTask} T={T} PC={PC} CC={CC} bdr={bdr} txt={txt} muted={muted} neon={neon} bg4={bg4} schedule={schedule} FOCUS_BLOCKS={FOCUS_BLOCKS}/>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-                {/* Done tasks */}
-                {doneVisible.length>0&&(
-                  <div style={{marginTop:16}}>
-                    <div style={{...T.secLbl, marginBottom:10}}>
-                      <span>Concluídas</span>
-                      <div style={T.secLine}/>
+              </div>
+            )}
+
+            {/* ─── AGENDA VIEW (Timeline) ────────────────────────────────────── */}
+            {plannerView==="agenda"&&(
+              <div style={{display:"grid",gridTemplateColumns:"60px 1fr",gap:0}}>
+                {/* Time labels */}
+                <div style={{paddingTop:8}}>
+                  {FOCUS_BLOCKS.map((block,i)=>(
+                    <div key={block.id} style={{height:140,display:"flex",flexDirection:"column",justifyContent:"flex-start",paddingTop:4}}>
+                      <div style={{fontSize:11,color:muted,fontFamily:"monospace"}}>{block.start}</div>
+                      {i===FOCUS_BLOCKS.length-1&&<div style={{fontSize:11,color:muted,fontFamily:"monospace",marginTop:"auto",paddingBottom:4}}>{block.end}</div>}
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {doneVisible.map(t=>(
-                        <TaskCard key={t.id} t={t} activeId={activeId} onToggle={toggleTask} onFocus={focusTask} onRemove={removeTask} T={T} PC={PC} CC={CC} bdr={bdr} txt={txt} muted={muted} neon={neon} bg4={bg4}/>
-                      ))}
+                  ))}
+                </div>
+                
+                {/* Timeline blocks */}
+                <div style={{position:"relative"}}>
+                  {/* Current time line */}
+                  {currentBlock&&(
+                    <div style={{
+                      position:"absolute",
+                      left:0,right:0,
+                      top:FOCUS_BLOCKS.findIndex(b=>b.id===currentBlock.id)*140 + ((currentMins-timeToMins(currentBlock.start))/(timeToMins(currentBlock.end)-timeToMins(currentBlock.start)))*140,
+                      height:2,
+                      background:red,
+                      zIndex:10,
+                      boxShadow:`0 0 8px ${red}`,
+                    }}>
+                      <div style={{position:"absolute",left:-4,top:-4,width:10,height:10,borderRadius:"50%",background:red}}/>
                     </div>
-                  </div>
-                )}
+                  )}
+                  
+                  {FOCUS_BLOCKS.map(block=>{
+                    const blockTasks = (schedule[block.id]||[]).map(tid=>tasks.find(t=>t.id===tid)).filter(Boolean);
+                    const isCurrentBlock = currentBlock?.id===block.id;
+                    
+                    return(
+                      <div
+                        key={block.id}
+                        onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=block.color+"15";}}
+                        onDragLeave={e=>{e.currentTarget.style.background=isCurrentBlock?block.color+"08":"transparent";}}
+                        onDrop={e=>{
+                          e.preventDefault();
+                          e.currentTarget.style.background=isCurrentBlock?block.color+"08":"transparent";
+                          if(dragTask) assignTaskToBlock(dragTask,block.id);
+                        }}
+                        style={{
+                          height:140,
+                          borderLeft:`3px solid ${block.color}`,
+                          borderBottom:`1px solid ${bdr}`,
+                          padding:"8px 12px",
+                          background:isCurrentBlock?block.color+"08":"transparent",
+                          transition:"background .15s",
+                        }}
+                      >
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                          <span style={{fontSize:14}}>{block.icon}</span>
+                          <span style={{fontSize:13,fontWeight:600,color:block.color}}>{block.label}</span>
+                          {isCurrentBlock&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:8,background:block.color,color:"#000",fontWeight:700}}>AGORA</span>}
+                        </div>
+                        
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          {blockTasks.length===0?(
+                            <div style={{fontSize:11,color:muted,fontStyle:"italic"}}>Arraste tarefas para este bloco</div>
+                          ):blockTasks.map(t=>(
+                            <div
+                              key={t.id}
+                              onClick={()=>!t.done&&focusTask(t.id)}
+                              style={{
+                                background:t.done?bg4:t.id===activeId?neon+"20":bg3,
+                                border:`1px solid ${t.done?bdr:t.id===activeId?neon:bdr}`,
+                                borderRadius:8,
+                                padding:"6px 10px",
+                                fontSize:12,
+                                color:t.done?muted:t.id===activeId?neon:txt,
+                                cursor:t.done?"default":"pointer",
+                                textDecoration:t.done?"line-through":"none",
+                                display:"flex",alignItems:"center",gap:6,
+                                maxWidth:200,
+                              }}
+                            >
+                              <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</span>
+                              <span style={{fontSize:10,color:muted,flexShrink:0}}>{t.mins}m</span>
+                              <button style={{padding:0,border:"none",background:"transparent",color:muted,cursor:"pointer",fontSize:12,lineHeight:1}} onClick={e=>{e.stopPropagation();removeTaskFromBlock(t.id,block.id);}}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -636,7 +985,7 @@ export default function App(){
 
         {/* ── FOOTER ─────────────────────────────────────────────────────── */}
         <div style={{textAlign:"center",fontSize:10,color:bdr,marginTop:40,letterSpacing:1,paddingBottom:20}}>
-          FOCOOS · v6.0 · {new Date().getFullYear()}
+          FOCOOS · v7.0 · {new Date().getFullYear()}
         </div>
       </div>
     </div>
@@ -644,10 +993,13 @@ export default function App(){
 }
 
 // ── TaskCard component ──────────────────────────────────────────────────────
-function TaskCard({t, activeId, onToggle, onFocus, onRemove, T, PC, CC, bdr, txt, muted, neon, bg4}){
+function TaskCard({t, activeId, onToggle, onFocus, onRemove, T, PC, CC, bdr, txt, muted, neon, bg4, schedule, FOCUS_BLOCKS}){
   const isActive = t.id === activeId;
   const spent = t.spentMins||0;
   const pct = t.mins>0?Math.min(100,Math.round((spent/t.mins)*100)):0;
+  
+  // Find which block this task is in
+  const taskBlock = FOCUS_BLOCKS?.find(b=>schedule?.[b.id]?.includes(t.id));
 
   return(
     <div style={{
@@ -681,6 +1033,7 @@ function TaskCard({t, activeId, onToggle, onFocus, onRemove, T, PC, CC, bdr, txt
           <span style={T.badge(PC[t.prio]||muted)}>{t.prio}</span>
           <span style={{fontSize:11,color:muted}}>⏱ {t.mins}m</span>
           {spent>0&&<span style={{fontSize:11,color:neon,fontWeight:600}}>{spent}m gasto</span>}
+          {taskBlock&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:taskBlock.color+"20",color:taskBlock.color,fontWeight:600}}>{taskBlock.icon} {taskBlock.label}</span>}
         </div>
 
         {/* Spent progress */}
@@ -699,7 +1052,7 @@ function TaskCard({t, activeId, onToggle, onFocus, onRemove, T, PC, CC, bdr, txt
         {!t.done&&(
           <button style={T.btnIcon(isActive)} onClick={()=>onFocus(t.id)} title="Focar nessa tarefa">▶</button>
         )}
-        <button style={{padding:"5px 7px",border:"none",background:"transparent",color:bdr,cursor:"pointer",fontSize:18,lineHeight:1,flexShrink:0}} onClick={()=>onRemove(t.id)}>×</button>
+        <button style={{padding:"5px 7px",border:"none",background:"transparent",color:bdr,cursor:"pointer",fontSize:16,lineHeight:1}} onClick={()=>onRemove(t.id)} title="Remover">×</button>
       </div>
     </div>
   );
