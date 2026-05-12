@@ -140,80 +140,20 @@ const T = {
   timerPanel:{ background:bg2, border:`1px solid ${bdr}`, borderRadius:16, padding:28, display:"flex", flexDirection:"column", alignItems:"center" },
   timerRing:{ position:"relative", width:180, height:180, marginBottom:24, marginTop:8 },
   timerTime:{ fontSize:40, fontWeight:800, letterSpacing:3, fontVariantNumeric:"tabular-nums" },
-  // Immersive mode styles
-  immersiveOverlay:(phase,running)=>({
-    position:"fixed", inset:0, zIndex:9999,
-    background: phase==="focus" 
-      ? "linear-gradient(135deg, #ff8c00 0%, #ff6b00 25%, #f5a623 50%, #ffb347 75%, #ff8c00 100%)"
-      : "linear-gradient(135deg, #1a1a2e 0%, #16213e 25%, #0f3460 50%, #1a1a6e 75%, #0d1b3e 100%)",
-    display: running ? "flex" : "none",
-    flexDirection:"column", alignItems:"center", justifyContent:"center",
-    animation: "fadeIn .5s ease-out",
-  }),
-  immersiveTitle:(phase)=>({
-    fontSize: 72, fontWeight: 900, letterSpacing: 8,
-    color: phase==="focus" ? "#fff" : "#64b5f6",
-    textShadow: phase==="focus" 
-      ? "0 4px 20px rgba(0,0,0,.3), 0 0 80px rgba(255,180,100,.5)"
-      : "0 4px 20px rgba(0,0,0,.5), 0 0 80px rgba(100,181,246,.4)",
-    textTransform: "uppercase", marginBottom: 40,
-    animation: "pulse 3s ease-in-out infinite",
-  }),
-  immersiveRing:{
-    position:"relative", width:280, height:280, marginBottom:40,
+  // Dynamic theme for timer tab (warm focus / cool break)
+  timerTheme:(running,phase)=>{
+    if(!running) return { bg:bg2, border:bdr, accent:neon, text:txt, muted:muted };
+    if(phase==="focus") return { 
+      bg:"linear-gradient(145deg, #2d1810 0%, #1a0f08 100%)", 
+      border:"#5c3d2e", accent:"#ff9500", text:"#fff5eb", muted:"#c9a078",
+      glow:"0 0 60px rgba(255,149,0,.15)"
+    };
+    return { 
+      bg:"linear-gradient(145deg, #0d1a2d 0%, #081220 100%)", 
+      border:"#1e3a5f", accent:"#64b5f6", text:"#e3f2fd", muted:"#7da8c9",
+      glow:"0 0 60px rgba(100,181,246,.12)"
+    };
   },
-  immersiveTime:(phase)=>({
-    fontSize:64, fontWeight:900, letterSpacing:6, fontVariantNumeric:"tabular-nums",
-    color: phase==="focus" ? "#fff" : "#90caf9",
-    textShadow: phase==="focus" 
-      ? "0 2px 10px rgba(0,0,0,.3)"
-      : "0 2px 10px rgba(0,0,0,.5)",
-  }),
-  immersivePhase:(phase)=>({
-    fontSize:14, fontWeight:700, letterSpacing:4, textTransform:"uppercase",
-    color: phase==="focus" ? "rgba(255,255,255,.7)" : "rgba(144,202,249,.7)",
-    marginTop:4,
-  }),
-  immersiveTask:(phase)=>({
-    fontSize:18, fontWeight:600, maxWidth:400, textAlign:"center",
-    color: phase==="focus" ? "rgba(255,255,255,.85)" : "rgba(144,202,249,.85)",
-    marginBottom:50, padding:"12px 30px",
-    background: phase==="focus" ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.08)",
-    borderRadius:30, backdropFilter:"blur(10px)",
-  }),
-  immersiveBtn:(phase)=>({
-    padding:"16px 40px", fontSize:16, fontWeight:700, letterSpacing:2,
-    border:"none", borderRadius:50, cursor:"pointer",
-    color: phase==="focus" ? "#ff6b00" : "#0f3460",
-    background: phase==="focus" ? "#fff" : "#90caf9",
-    boxShadow: phase==="focus" 
-      ? "0 8px 30px rgba(0,0,0,.25), 0 0 40px rgba(255,255,255,.2)"
-      : "0 8px 30px rgba(0,0,0,.35), 0 0 40px rgba(144,202,249,.2)",
-    transition:"transform .15s, box-shadow .15s",
-  }),
-  immersiveExit:(phase)=>({
-    position:"absolute", top:30, right:30,
-    padding:"10px 20px", fontSize:13, fontWeight:600,
-    border:`2px solid ${phase==="focus"?"rgba(255,255,255,.3)":"rgba(144,202,249,.3)"}`,
-    borderRadius:30, cursor:"pointer", background:"transparent",
-    color: phase==="focus" ? "rgba(255,255,255,.7)" : "rgba(144,202,249,.7)",
-    transition:"all .15s",
-  }),
-  immersiveSessions:(phase)=>({
-    position:"absolute", bottom:40, left:"50%", transform:"translateX(-50%)",
-    display:"flex", gap:8, padding:"10px 20px",
-    background: phase==="focus" ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.05)",
-    borderRadius:30,
-  }),
-  immersiveSessionDot:(filled,phase)=>({
-    width:12, height:12, borderRadius:"50%",
-    background: filled 
-      ? (phase==="focus" ? "#fff" : "#90caf9") 
-      : (phase==="focus" ? "rgba(255,255,255,.25)" : "rgba(144,202,249,.25)"),
-    boxShadow: filled 
-      ? (phase==="focus" ? "0 0 10px rgba(255,255,255,.5)" : "0 0 10px rgba(144,202,249,.4)")
-      : "none",
-  }),
   timerPhase:(c)=>({ fontSize:11, fontWeight:700, letterSpacing:2.5, color:c, marginTop:4 }),
   btnRound:{ width:46, height:46, borderRadius:"50%", border:`1px solid ${bdr}`, background:bg4, cursor:"pointer", fontSize:16, color:muted, display:"flex", alignItems:"center", justifyContent:"center" },
   btnPlay:(r)=>({ width:66, height:66, borderRadius:"50%", border:"none", background:r?red:neon, cursor:"pointer", fontSize:22, color:"#000", fontWeight:700, boxShadow:`0 0 24px ${r?red:neon}55`, display:"flex", alignItems:"center", justifyContent:"center" }),
@@ -849,159 +789,132 @@ export default function App(){
         {/* ══════════════════════════════════════════════════════════════════
             TAB: TIMER
         ══════════════════════════════════════════════════════════════════ */}
-        {tab==="timer"&&(
-          <>
-          {/* IMMERSIVE MODE OVERLAY */}
-          {running && (
-            <div style={T.immersiveOverlay(phase,running)}>
-              {/* Exit button */}
-              <button 
-                onClick={startStop} 
-                style={T.immersiveExit(phase)}
-                onMouseEnter={e=>{e.currentTarget.style.background=phase==="focus"?"rgba(255,255,255,.15)":"rgba(144,202,249,.15)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
-              >
-                ✕ Sair
-              </button>
+{tab==="timer"&&(()=>{
+  const theme = T.timerTheme(running, phase);
+  return (
+  <div style={{
+    background: theme.bg,
+    borderRadius: 20,
+    padding: 20,
+    transition: "all .6s ease",
+    boxShadow: theme.glow || "none",
+    border: `1px solid ${theme.border}`,
+    position: "relative",
+    overflow: "hidden"
+  }}>
+  
+  {/* Mode indicator banner */}
+  {running && (
+    <div style={{
+      textAlign:"center", marginBottom:20, padding:"14px 20px",
+      background: phase==="focus" ? "rgba(255,149,0,.12)" : "rgba(100,181,246,.1)",
+      borderRadius:14, border:`1px solid ${theme.border}`,
+    }}>
+      <div style={{
+        fontSize:28, fontWeight:900, letterSpacing:6, textTransform:"uppercase",
+        color: theme.accent,
+        textShadow: `0 0 30px ${theme.accent}66`,
+      }}>
+        {phase==="focus" ? "Em Foco" : "Intervalo"}
+      </div>
+      <div style={{fontSize:11, color:theme.muted, marginTop:4, letterSpacing:2}}>
+        {phase==="focus" ? "Concentre-se na tarefa" : "Relaxe e descanse"}
+      </div>
+    </div>
+  )}
+  
+<div style={{...T.timerWrap, color:theme.text}}>
+  
+  {/* Left — Timer */}
+  <div>
+  <div style={{...T.secLbl, marginBottom:14, color:theme.muted}}>
+  <span>Timer de Foco</span>
+  <div style={{...T.secLine, background:theme.border}}/>
+  </div>
+  <div style={{...T.timerPanel, background:running?"transparent":bg2, border:`1px solid ${theme.border}`, transition:"all .5s"}}>
+  {/* Presets */}
+  <div style={{display:"flex",gap:6,marginBottom:20}}>
+  {PRESETS.map(p=>(
+  <button key={p.l} style={{
+    ...T.presetPill(preset===p),
+    borderColor: preset===p ? theme.accent : theme.border,
+    color: preset===p ? theme.accent : theme.muted,
+    background: preset===p ? theme.accent+"18" : "transparent",
+  }} onClick={()=>selPreset(p)}>{p.l}</button>
+  ))}
+  </div>
+  
+  {/* Active task badge */}
+  {activeTask?(
+  <div style={{fontSize:12,color:theme.accent,background:theme.accent+"15",border:`1px solid ${theme.accent}30`,
+  padding:"5px 16px",borderRadius:20,marginBottom:20,maxWidth:220,
+  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:600,transition:"all .4s"}}>
+  {running ? "●" : "▶"} {activeTask.title}
+  </div>
+  ):(
+  <div style={{fontSize:12,color:theme.muted,marginBottom:20,padding:"5px 16px",background:running?"rgba(255,255,255,.05)":bg4,borderRadius:20,border:`1px solid ${theme.border}`,transition:"all .4s"}}>
+  — selecione uma tarefa —
+  </div>
+  )}
+  
+  {/* SVG Ring */}
+  <div style={T.timerRing}>
+  <svg width={180} height={180} style={{transform:"rotate(-90deg)"}}>
+  {/* Track */}
+  <circle cx={90} cy={90} r={R} fill="none" stroke={running?"rgba(255,255,255,.1)":bg4} strokeWidth={10} style={{transition:"stroke .5s"}}/>
+  {/* Glow ring */}
+  <circle cx={90} cy={90} r={R} fill="none" stroke={theme.accent}
+  strokeWidth={10} strokeLinecap="round"
+  strokeDasharray={circ} strokeDashoffset={circ*(1-pct)}
+  style={{transition:"stroke-dashoffset .8s linear,stroke .5s",filter:`drop-shadow(0 0 8px ${theme.accent})`}}/>
+  </svg>
+  <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+  <div style={{...T.timerTime, color:theme.text, transition:"color .5s"}}>{fmt(secs)}</div>
+  <div style={{...T.timerPhase(theme.accent), transition:"color .5s"}}>{phase==="focus"?"FOCO":"PAUSA"}</div>
+  </div>
+  </div>
+  
+  {/* Controls */}
+  <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
+  <button style={{...T.btnRound, borderColor:theme.border, color:theme.muted, background:running?"rgba(255,255,255,.05)":bg4, transition:"all .4s"}} onClick={resetTimer} title="Reiniciar">
+  <span style={{fontSize:16}}>↺</span>
+  </button>
+  <button style={{
+    ...T.btnPlay(running),
+    background: running ? (phase==="focus"?"#ff6b00":"#64b5f6") : neon,
+    boxShadow: `0 0 24px ${theme.accent}55`,
+    transition:"all .4s"
+  }} onClick={startStop}>
+  <span>{running?"⏸":"▶"}</span>
+  </button>
+  <button style={{...T.btnRound, borderColor:theme.border, color:theme.muted, background:running?"rgba(255,255,255,.05)":bg4, transition:"all .4s"}} onClick={skipPhase} title="Pular fase">
+  <span style={{fontSize:16}}>⏭</span>
+  </button>
+  </div>
 
-              {/* Main title */}
-              <div style={T.immersiveTitle(phase)}>
-                {phase==="focus" ? "Em Foco" : "Intervalo"}
-              </div>
-
-              {/* Active task */}
-              {activeTask && (
-                <div style={T.immersiveTask(phase)}>
-                  {activeTask.title}
-                </div>
-              )}
-
-              {/* Large Timer Ring */}
-              <div style={T.immersiveRing}>
-                <svg width={280} height={280} style={{transform:"rotate(-90deg)"}}>
-                  <defs>
-                    <filter id="immersiveGlow">
-                      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                      <feMerge>
-                        <feMergeNode in="coloredBlur"/>
-                        <feMergeNode in="SourceGraphic"/>
-                      </feMerge>
-                    </filter>
-                  </defs>
-                  {/* Track */}
-                  <circle cx={140} cy={140} r={120} fill="none" 
-                    stroke={phase==="focus"?"rgba(0,0,0,.15)":"rgba(255,255,255,.1)"} 
-                    strokeWidth={12}/>
-                  {/* Progress ring */}
-                  <circle cx={140} cy={140} r={120} fill="none" 
-                    stroke={phase==="focus"?"#fff":"#90caf9"}
-                    strokeWidth={12} strokeLinecap="round"
-                    strokeDasharray={2*Math.PI*120} 
-                    strokeDashoffset={2*Math.PI*120*(1-pct)}
-                    style={{transition:"stroke-dashoffset .8s linear", filter:"url(#immersiveGlow)"}}/>
-                </svg>
-                <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                  <div style={T.immersiveTime(phase)}>{fmt(secs)}</div>
-                  <div style={T.immersivePhase(phase)}>{phase==="focus"?"FOCO":"PAUSA"}</div>
-                </div>
-              </div>
-
-              {/* Pause/Resume button */}
-              <button 
-                onClick={startStop} 
-                style={T.immersiveBtn(phase)}
-                onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.05)";}}
-                onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}
-              >
-                ⏸ PAUSAR
-              </button>
-
-              {/* Session dots */}
-              <div style={T.immersiveSessions(phase)}>
-                {Array.from({length:Math.max(sessions+1,4)}).map((_,i)=>(
-                  <div key={i} style={T.immersiveSessionDot(i<sessions,phase)}/>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={T.timerWrap}>
-
-            {/* Left — Timer */}
-            <div>
-              <div style={{...T.secLbl, marginBottom:14}}>
-                <span>Timer de Foco</span>
-                <div style={T.secLine}/>
-              </div>
-              <div style={T.timerPanel}>
-                {/* Presets */}
-                <div style={{display:"flex",gap:6,marginBottom:20}}>
-                  {PRESETS.map(p=>(
-                    <button key={p.l} style={T.presetPill(preset===p)} onClick={()=>selPreset(p)}>{p.l}</button>
-                  ))}
-                </div>
-
-                {/* Active task badge */}
-                {activeTask?(
-                  <div style={{fontSize:12,color:neon,background:neon+"12",border:`1px solid ${neon}25`,
-                    padding:"5px 16px",borderRadius:20,marginBottom:20,maxWidth:220,
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:600}}>
-                    ▶ {activeTask.title}
-                  </div>
-                ):(
-                  <div style={{fontSize:12,color:muted,marginBottom:20,padding:"5px 16px",background:bg4,borderRadius:20,border:`1px solid ${bdr}`}}>
-                    — selecione uma tarefa —
-                  </div>
-                )}
-
-                {/* SVG Ring */}
-                <div style={T.timerRing}>
-                  <svg width={180} height={180} style={{transform:"rotate(-90deg)"}}>
-                    {/* Track */}
-                    <circle cx={90} cy={90} r={R} fill="none" stroke={bg4} strokeWidth={10}/>
-                    {/* Glow ring */}
-                    <circle cx={90} cy={90} r={R} fill="none" stroke={phase==="focus"?neon:yel}
-                      strokeWidth={10} strokeLinecap="round"
-                      strokeDasharray={circ} strokeDashoffset={circ*(1-pct)}
-                      style={{transition:"stroke-dashoffset .8s linear,stroke .4s",filter:`drop-shadow(0 0 6px ${phase==="focus"?neon:yel})`}}/>
-                  </svg>
-                  <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                    <div style={T.timerTime}>{fmt(secs)}</div>
-                    <div style={T.timerPhase(phase==="focus"?neon:yel)}>{phase==="focus"?"FOCO":"PAUSA"}</div>
-                  </div>
-                </div>
-
-                {/* Controls */}
-                <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
-                  <button style={T.btnRound} onClick={resetTimer} title="Reiniciar">
-                    <span style={{fontSize:16}}>↺</span>
-                  </button>
-                  <button style={T.btnPlay(running)} onClick={startStop}>
-                    <span>{running?"⏸":"▶"}</span>
-                  </button>
-                  <button style={T.btnRound} onClick={skipPhase} title="Pular fase">
-                    <span style={{fontSize:16}}>⏭</span>
-                  </button>
-                </div>
-
-                {/* Session dots */}
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                  <div style={{fontSize:10,color:muted,letterSpacing:1,textTransform:"uppercase"}}>Sessões</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center",maxWidth:160}}>
-                    {Array.from({length:Math.max(sessions,4)}).map((_,i)=>(
-                      <div key={i} style={T.sessionDot(i<sessions)}/>
-                    ))}
-                  </div>
-                  {sessions>0&&<div style={{fontSize:11,color:neon,fontWeight:600}}>{sessions} sessão{sessions!==1?"s":""} hoje</div>}
-                </div>
-              </div>
-            </div>
-
-            {/* Right — Today stats + task selector */}
-            <div>
-              <div style={{...T.secLbl, marginBottom:14}}>
-                <span>Hoje por Categoria</span>
-                <div style={T.secLine}/>
+{/* Session dots */}
+  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+  <div style={{fontSize:10,color:theme.muted,letterSpacing:1,textTransform:"uppercase",transition:"color .4s"}}>Sessões</div>
+  <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center",maxWidth:160}}>
+  {Array.from({length:Math.max(sessions,4)}).map((_,i)=>(
+  <div key={i} style={{
+    width:7, height:7, borderRadius:"50%", 
+    background:i<sessions?theme.accent:theme.border, 
+    boxShadow:i<sessions?`0 0 6px ${theme.accent}`:"none",
+    transition:"all .4s"
+  }}/>
+  ))}
+  </div>
+  {sessions>0&&<div style={{fontSize:11,color:theme.accent,fontWeight:600,transition:"color .4s"}}>{sessions} sessão{sessions!==1?"s":""} hoje</div>}
+  </div>
+  </div>
+  </div>
+  
+  {/* Right — Today stats + task selector */}
+  <div>
+  <div style={{...T.secLbl, marginBottom:14, color:theme.muted}}>
+  <span>Hoje por Categoria</span>
+  <div style={{...T.secLine, background:theme.border}}/>
               </div>
 
               <div style={T.card}>
@@ -1051,6 +964,12 @@ export default function App(){
   </div>
   </>
   )}
+  </div>
+  </div>
+  </div>
+  </div>
+  );
+  })()}
   
   {/* ══════════════════════════════════════════════════════════════════
   TAB: DASHBOARD
